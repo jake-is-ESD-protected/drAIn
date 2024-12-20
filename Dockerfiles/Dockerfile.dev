@@ -1,0 +1,28 @@
+# Dockerfile
+# Dockerfile to reproduce the specialized docker image for
+# the drAIn project.
+# This file covers installs and correct driver usage.
+# See README.md for the usage with `docker run`.
+
+# Build with `docker build -t drAIn:latest -f Dockerfile.full .`
+
+# NOTE: What tensorlfow image is pulled from NVIDIA has to be
+# manually adjusted to fit the local NVIDIA base driver and CUDA
+# version. Sadly, there is no way to automate this yet.
+
+FROM nvcr.io/nvidia/tensorflow:24.02-tf2-py3
+
+RUN apt update
+
+WORKDIR /workdir
+
+COPY ./drAIn ./drAIn
+COPY ./tests ./tests
+COPY ./pyproject.toml ./pyproject.toml
+COPY ./README.md ./README.md
+
+RUN pip install -e .[full]
+RUN pip install -e .[lite]
+RUN pip install pytest
+
+RUN pip freeze | grep tensorflow

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools", "wheel", "pip"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drAIn"
+version = "0.0.1"
+description = "BS-less, platform-agnostic ML training and inference pipeline for TensorFlow models."
+authors = [
+    { name = "jake-is_ESD-protected", email = "jake@jesdev.io" }
+    ]
+license = { text = "GPL-3.0-only" }
+dependencies = [
+    "setuptools",
+    "wheel",
+    "pip",
+    "numpy",
+    ]
+requires-python = "> 3.9"
+keywords = ["ML", "pipeline", "TensorFlow"]
+classifiers = []
+urls = { homepage = "https://github.com/jake-is-ESD-protected/drAIn" }
+
+[tool.setuptools.packages.find]
+include = ["drAIn"]
+
+[project.scripts]
+drain = "drAIn.cli:main"
+
+[project.optional-dependencies]
+full = [
+    "tensorflow"
+    ]
+
+lite = [
+    "tflite-runtime"
+    ]
