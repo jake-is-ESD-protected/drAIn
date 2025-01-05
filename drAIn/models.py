@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 import os
 import numpy as np
 
@@ -15,11 +15,11 @@ class CModelGenerator:
     
     @classmethod
     def get_supported_engines(cls) -> list:
-        return ['tf', 'tflite']
+        return ['tf', 'litert']
 
     @classmethod
     def get_supported_classes(cls) -> dict:
-        return dict(zip(cls.get_supported_engines(), [CModelTF, CModelTFLite]))
+        return dict(zip(cls.get_supported_engines(), [CModelTF, CModelLiteRT]))
         
 
 class CModelBase(ABC):
@@ -36,8 +36,8 @@ class CModelBase(ABC):
         self.prec = "Training native"
         self.pre = self._pre
         self.post = self._post
-    
-    def _load_saved(self):
+
+    def load(self):
         pass
 
     def _pre(self, data):
@@ -62,9 +62,6 @@ class CModelUser(CModelBase):
             if self.trained:
                 raise ValueError("A model architecture was given, yet a saved model exists at the given path.")
         self.arch = arch
-        
-    def load():
-        pass
 
 
 class CModelTF(CModelUser):
@@ -74,32 +71,45 @@ class CModelTF(CModelUser):
         import keras # type: ignore
         self.tf = tf
         self.keras = keras
+        self.__mtf = None
     
-    def _load_saved(self):
+    def __load_saved(self):
         model = self.tf.keras.models.load_model(self.path)
         return model
+    
+    def __build_arch(self, **kwargs_compile):
+        self.arch.compile(**kwargs_compile)
+        return self.arch
+    
+    def load(self, **kwargs):
+        if self.trained:
+            self.__mtf = self.__load_saved()
+        else:
+            self.__mtf = self.__build_arch(**kwargs)
+        self.in_shape = tuple(self.__mtf.layers[0].input.shape.as_list())
+        self.out_shape = tuple(self.__mtf.layers[-1].output.shape.as_list())
 
 
-class CModelTFLite(CModelUser):
+class CModelLiteRT(CModelUser):
     def __init__(self, path: str, preproc=None, postproc=None, arch="frompath") -> None:
         if not isinstance(arch, str):
-            raise ValueError("TFLite model has a fixed architecture. Consider loading a TF model instead.")
-        super().__init__(path, 'tflite', preproc, postproc)
+            raise ValueError("LiteRT model has a fixed architecture. Consider loading a TF model instead.")
+        super().__init__(path, 'litert', preproc, postproc)
         if not self.trained:
-            raise FileNotFoundError(f"No TFLite model found at <{self.path}>.")
-        import tflite_runtime as tflite # type: ignore
-        self.tflite = tflite
+            raise FileNotFoundError(f"No LiteRT model found at <{self.path}>.")
+        import ai_edge_litert.interpreter as litert # type: ignore
+        self.litert = litert
         self.delegate = None
     
-    def _load_saved(self):
-        self.interpreter = self.tflite.Interpreter(model_path=self.path, 
-                                                   experimental_delegates=self.delegate, 
-                                                   num_threads=4)
+    def load(self):
+        self.interpreter = self.litert.Interpreter(model_path=self.path, 
+                                                               experimental_delegates=self.delegate, 
+                                                               num_threads=4)
         self.interpreter.allocate_tensors()
         self.in_info = self.interpreter.get_input_details()
         self.out_info = self.interpreter.get_output_details()
-        self.in_shape = self.in_info[0]['shape']
-        self.out_shape = self.out_info[0]['shape']
+        self.in_shape = tuple(self.in_info[0]['shape'])
+        self.out_shape = tuple(self.out_info[0]['shape'])
         self.batch_size = self.in_shape[0]
         self.prec = self.in_info[0]['dtype']
         if self.prec == np.int8:
