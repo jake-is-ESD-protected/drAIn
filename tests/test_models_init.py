@@ -2,12 +2,20 @@ from drAIn import models
 import pytest
 import numpy as np
 from keras import Sequential
+import tensorflow as tf
 
 path_tf_fake = "tests/static/test_model.keras"
-path_tflite_fake = "tests/static/test_model.tflite"
+path_litert_fake = "tests/static/test_model.tflite"
 path_tf_real = "tests/static/dummy_model.keras"
-path_tflite_real = "tests/static/dummy_model.tflite"
-model_arch = Sequential()
+path_litert_real = "tests/static/dummy_model.tflite"
+in_shape = 10
+out_shape = 4
+model_arch = Sequential([
+        tf.keras.layers.InputLayer(input_shape=(in_shape,)),
+        tf.keras.layers.Dense(32, activation='relu'),
+        tf.keras.layers.Dense(16, activation='relu'),
+        tf.keras.layers.Dense(out_shape, activation='sigmoid')
+    ])
 
 
 def pre_custom(data):
@@ -79,7 +87,7 @@ def test_model_user_init():
 
 
 def test_model_generator_engines():
-    targets = ['tf', 'tflite']
+    targets = ['tf', 'litert']
     engs = models.CModelGenerator.get_supported_engines()
     assert len(targets) == len(engs)
     assert sorted(targets) == sorted(engs)
@@ -89,7 +97,7 @@ def test_model_generator_engines():
     for target, key in zip(targets, clss.keys()):
         assert target == key
     assert models.CModelTF in clss.values()
-    assert models.CModelTFLite in clss.values()
+    assert models.CModelLiteRT in clss.values()
 
 
 def test_model_generator_tf():
@@ -136,15 +144,15 @@ def test_model_generator_tf():
                                         arch=model_arch)
 
 
-def test_model_generator_tflite():
+def test_model_generator_litert():
     # test for existing model
-    m = models.CModelGenerator.make(path=path_tflite_real,
-                                    engine='tflite',
+    m = models.CModelGenerator.make(path=path_litert_real,
+                                    engine='litert',
                                     preproc=pre_custom,
                                     postproc=post_custom)
-    assert m.name == models.CModelTFLite.__name__
-    assert m.path == path_tflite_real
-    assert m.engine == 'tflite'
+    assert m.name == models.CModelLiteRT.__name__
+    assert m.path == path_litert_real
+    assert m.engine == 'litert'
     assert m.trained == True
     assert m.in_shape == None
     assert m.out_shape == None
@@ -154,15 +162,15 @@ def test_model_generator_tflite():
 
     # test for model that does not exist yet (Exception)
     with pytest.raises(FileNotFoundError) as e:
-        m = models.CModelGenerator.make(path=path_tflite_fake,
-                                        engine='tflite',
+        m = models.CModelGenerator.make(path=path_litert_fake,
+                                        engine='litert',
                                         preproc=pre_custom,
                                         postproc=post_custom)
     
     # test for arch override (Exception)
     with pytest.raises(ValueError) as e:
-        m = models.CModelGenerator.make(path=path_tflite_fake,
-                                        engine='tflite',
+        m = models.CModelGenerator.make(path=path_litert_fake,
+                                        engine='litert',
                                         preproc=pre_custom,
                                         postproc=post_custom,
                                         arch=model_arch)

@@ -33,5 +33,5 @@ full = [
     ]
 
 lite = [
-    "tflite-runtime"
+    "ai-edge-litert"
     ]
