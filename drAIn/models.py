@@ -70,8 +70,8 @@ class CModelUser(CModelBase):
 class CModelTF(CModelUser):
     def __init__(self, path: str, preproc=None, postproc=None, arch="frompath") -> None:
         super().__init__(path, 'tf', preproc, postproc, arch)
-        import tensorflow as tf
-        import keras
+        import tensorflow as tf # type: ignore
+        import keras # type: ignore
         self.tf = tf
         self.keras = keras
     
@@ -87,7 +87,7 @@ class CModelTFLite(CModelUser):
         super().__init__(path, 'tflite', preproc, postproc)
         if not self.trained:
             raise FileNotFoundError(f"No TFLite model found at <{self.path}>.")
-        import tflite_runtime as tflite
+        import tflite_runtime as tflite # type: ignore
         self.tflite = tflite
         self.delegate = None
     
