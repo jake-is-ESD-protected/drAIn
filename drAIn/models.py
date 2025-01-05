@@ -40,6 +40,9 @@ class CModelBase(ABC):
     def load(self):
         pass
 
+    def train(self):
+        pass
+
     def _pre(self, data):
         return data
 
@@ -88,6 +91,49 @@ class CModelTF(CModelUser):
             self.__mtf = self.__build_arch(**kwargs)
         self.in_shape = tuple(self.__mtf.layers[0].input.shape.as_list())
         self.out_shape = tuple(self.__mtf.layers[-1].output.shape.as_list())
+        if kwargs.get("verbose", False):
+            self.__mtf.summary()
+            print(f"This model is trained: {self.trained}")
+    
+    def train(self, data, valid_split=0.2, test_split=0.05, epochs=100, batch=1, callbacks=None):
+        # TODO: add tensorboard callback
+        if not self.__mtf:
+            raise RuntimeError("No model loaded. Did you call `your_model.load()`?")
+        if valid_split + test_split > 1.0:
+            raise ValueError(f"A validation split of {valid_split} and a test split of {test_split} \
+                             does not leave data for training! Lower the percentages.")
+        if len(data) != 2:
+            raise ValueError(f"drAIn expects training data to be of shape (2, ...), where dimension \
+                             0 is the input data and 1 is the ground truth to that input. Your shape \
+                             was {len(data)}!")
+        
+        from sklearn.model_selection import train_test_split # type: ignore
+        xtrain, xval, ytrain, yval = train_test_split(data[0],
+                                                      data[1], 
+                                                      train_size=1-valid_split, 
+                                                      test_size=valid_split, 
+                                                      random_state=69420)
+        xtrain, xtest, ytrain, ytest = train_test_split(xtrain,
+                                                        ytrain, 
+                                                        train_size=1-test_split, 
+                                                        test_size=test_split, 
+                                                        random_state=69420)
+        hist = self.__mtf.fit(x=xtrain,
+                              y=ytrain,
+                              validation_data=(xval, yval),
+                              epochs=epochs,
+                              callbacks=callbacks,
+                              batch_size=batch)
+        
+        train_metrics = self.__mtf.evaluate([xtrain], ytrain, verbose=0)
+        val_metrics = self.__mtf.evaluate(xval, yval, verbose=0)
+        test_metrics = self.__mtf.evaluate(xtest, ytest, verbose=0)
+
+        input_shape = tuple(dim for dim in self.in_shape if dim is not None)
+        zero_data = np.zeros((batch, *input_shape))
+        zero_return = self.__mtf.predict(zero_data)
+        
+
 
 
 class CModelLiteRT(CModelUser):
