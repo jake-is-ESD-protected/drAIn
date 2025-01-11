@@ -155,9 +155,10 @@ class CModelTF(CModelUser):
         zero_data = np.zeros((batch, *self.in_shape))
         zero_return = self.__mtf.predict(zero_data)
 
-        return CModelTrainingResult(hist, train_metrics, val_metrics, test_metrics, zero_return)
-        
+        self.trained = True
+        self.__mtf.save(self.path)
 
+        return CModelTrainingResult(hist, train_metrics, val_metrics, test_metrics, zero_return)
 
 
 class CModelLiteRT(CModelUser):

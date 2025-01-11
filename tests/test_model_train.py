@@ -33,3 +33,4 @@ def test_model_tf_train():
     assert os.path.exists('logs')
     assert os.listdir('logs') != None
     shutil.rmtree('logs')
+    os.remove(path_tf_temp)
