@@ -87,13 +87,14 @@ class CModelTF(CModelUser):
         return self.arch
     
     def load(self, **kwargs):
+        verbose = kwargs.pop('verbose', False)
         if self.trained:
             self.__mtf = self.__load_saved()
         else:
             self.__mtf = self.__build_arch(**kwargs)
         self.in_shape = tuple(self.__mtf.layers[0].input.shape.as_list())
         self.out_shape = tuple(self.__mtf.layers[-1].output.shape.as_list())
-        if kwargs.get("verbose", False):
+        if verbose:
             self.__mtf.summary()
             printDrAIn(f"This model is trained: {self.trained}")
     
@@ -108,6 +109,7 @@ class CModelTF(CModelUser):
                              0 is the input data and 1 is the ground truth to that input. Your shape \
                              was {len(data)}!")
         
+        verbose = kwargs.pop('verbose', False)
         if callbacks == 'default':
             now = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
             log_dir = "logs/" + os.path.basename(self.path) + '_' + now
@@ -118,12 +120,12 @@ class CModelTF(CModelUser):
                                                                             patience=10, 
                                                                             restore_best_weights=True)
             callbacks = [tensorboard_callback, early_stopping_callback]
-            if kwargs.get("verbose", False):
+            if verbose:
                 printDrAIn(f"Using default callbacks {callbacks}")
                 printDrAIn(f"Storing logs to {log_dir}")
         
         if callbacks == None:
-            if kwargs.get("verbose", False):
+            if verbose:
                 printDrAIn(f"No callbacks registered.")
 
         from sklearn.model_selection import train_test_split # type: ignore
