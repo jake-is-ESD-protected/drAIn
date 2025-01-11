@@ -3,6 +3,8 @@ import pytest
 import numpy as np
 from keras import Sequential
 import tensorflow as tf
+import os
+import shutil
 
 path_tf_temp = "tests/static/temp_model.keras"
 
@@ -25,4 +27,9 @@ def test_model_tf_train():
     output_data = np.random.randn(*(n, out_shape))
     data = (input_data, output_data)
 
-    m.train(data=data, epochs=2)
+    results = m.train(data=data, epochs=2)
+    assert isinstance(results, models.CModelTrainingResult)
+    assert results.zero_return.shape[1:] == m.out_shape[1:] # ignore batch size
+    assert os.path.exists('logs')
+    assert os.listdir('logs') != None
+    shutil.rmtree('logs')

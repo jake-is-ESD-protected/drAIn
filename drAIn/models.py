@@ -1,6 +1,8 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 import os
 import numpy as np
+import datetime
+from .utils import printDrAIn
 
 class CModelGenerator:
     @classmethod
@@ -93,10 +95,9 @@ class CModelTF(CModelUser):
         self.out_shape = tuple(self.__mtf.layers[-1].output.shape.as_list())
         if kwargs.get("verbose", False):
             self.__mtf.summary()
-            print(f"This model is trained: {self.trained}")
+            printDrAIn(f"This model is trained: {self.trained}")
     
-    def train(self, data, valid_split=0.2, test_split=0.05, epochs=100, batch=1, callbacks=None):
-        # TODO: add tensorboard callback
+    def train(self, data, valid_split=0.2, test_split=0.05, epochs=100, batch=1, callbacks='default', **kwargs):
         if not self.__mtf:
             raise RuntimeError("No model loaded. Did you call `your_model.load()`?")
         if valid_split + test_split > 1.0:
@@ -107,6 +108,24 @@ class CModelTF(CModelUser):
                              0 is the input data and 1 is the ground truth to that input. Your shape \
                              was {len(data)}!")
         
+        if callbacks == 'default':
+            now = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            log_dir = "logs/" + os.path.basename(self.path) + '_' + now
+
+            tensorboard_callback = self.tf.keras.callbacks.TensorBoard(log_dir=log_dir, 
+                                                                       histogram_freq=1)
+            early_stopping_callback = self.tf.keras.callbacks.EarlyStopping(monitor='val_loss', 
+                                                                            patience=10, 
+                                                                            restore_best_weights=True)
+            callbacks = [tensorboard_callback, early_stopping_callback]
+            if kwargs.get("verbose", False):
+                printDrAIn(f"Using default callbacks {callbacks}")
+                printDrAIn(f"Storing logs to {log_dir}")
+        
+        if callbacks == None:
+            if kwargs.get("verbose", False):
+                printDrAIn(f"No callbacks registered.")
+
         from sklearn.model_selection import train_test_split # type: ignore
         xtrain, xval, ytrain, yval = train_test_split(data[0],
                                                       data[1], 
@@ -129,9 +148,12 @@ class CModelTF(CModelUser):
         val_metrics = self.__mtf.evaluate(xval, yval, verbose=0)
         test_metrics = self.__mtf.evaluate(xtest, ytest, verbose=0)
 
-        input_shape = tuple(dim for dim in self.in_shape if dim is not None)
-        zero_data = np.zeros((batch, *input_shape))
+        self.in_shape = tuple(dim for dim in self.in_shape if dim is not None)
+        self.batch_size = batch
+        zero_data = np.zeros((batch, *self.in_shape))
         zero_return = self.__mtf.predict(zero_data)
+
+        return CModelTrainingResult(hist, train_metrics, val_metrics, test_metrics, zero_return)
         
 
 
@@ -161,4 +183,12 @@ class CModelLiteRT(CModelUser):
         if self.prec == np.int8:
             self.in_scale, self.in_zero_point = self.in_info[0]['quantization']
             self.out_scale, self.out_zero_point = self.out_info[0]['quantization']
-    
+
+
+class CModelTrainingResult:
+    def __init__(self, history, train_metrics, val_metrics, test_metrics, zero_return) -> None:
+        self.history = history
+        self.train_metrics = train_metrics
+        self.val_metrics = val_metrics
+        self.test_metrics = test_metrics
+        self.zero_return = zero_return
