@@ -28,6 +28,7 @@ def test_model_tf_train():
     data = (input_data, output_data)
 
     results = m.train(data=data, epochs=2)
+    assert m.trained == True
     assert isinstance(results, models.CModelTrainingResult)
     assert results.zero_return.shape[1:] == m.out_shape[1:] # ignore batch size
     assert os.path.exists('logs')
