@@ -3,6 +3,7 @@ import os
 import numpy as np
 import datetime
 from .utils import printDrAIn
+import inspect
 
 class CModelGenerator:
     @classmethod
@@ -94,6 +95,7 @@ class CModelTF(CModelUser):
             self.__mtf = self.__build_arch(**kwargs)
         self.in_shape = tuple(self.__mtf.layers[0].input.shape.as_list())
         self.out_shape = tuple(self.__mtf.layers[-1].output.shape.as_list())
+        self.input_name = self.__mtf.input.name
         if verbose:
             self.__mtf.summary()
             printDrAIn(f"This model is trained: {self.trained}")
@@ -159,6 +161,46 @@ class CModelTF(CModelUser):
         self.__mtf.save(self.path)
 
         return CModelTrainingResult(hist, train_metrics, val_metrics, test_metrics, zero_return)
+    
+    def convert(self, prec, **kwargs):
+        converter = self.tf.lite.TFLiteConverter.from_keras_model(self.__mtf)
+        converter.optimizations = [self.tf.lite.Optimize.DEFAULT]
+
+        precs_tf = dict({'float32': self.tf.float32, 
+                         'float16': self.tf.float16, 
+                         'int8': self.tf.int8})
+
+        if prec not in list(precs_tf.keys()):
+            raise ValueError(f"Quantization <{prec}> unknown. Use one of the following: {list(precs_tf.keys())}.")
+
+        if prec == "int8":
+            calibration = kwargs.get('calibration', self.__calib_random)
+            if not inspect.isgenerator(calibration()):
+                raise ValueError("The given calibration function does not return a generator!")
+            self.n = kwargs.get('n', 100)
+            self.rng = kwargs.get('rng', [0, 1])
+            datapoint = next(calibration())
+            data_shape = np.asarray(datapoint[self.input_name]).shape
+            if data_shape != self.in_shape[1:]:
+                raise RuntimeError(f"Data shape {data_shape[1:]} and model input {self.in_shape} do not match!")
+            converter.representative_dataset = calibration
+            converter.target_spec.supported_ops = [self.tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
+            converter.inference_input_type = self.tf.int8
+            converter.inference_output_type = self.tf.int8
+            
+        converter.target_spec.supported_types = [precs_tf[prec]]
+        q_model = converter.convert()
+        path = self.path.split('.')[-2] + f"_{prec}" + ".tflite"
+        with open(path, 'wb') as f:
+            f.write(q_model)
+        return CModelLiteRT(path, self.pre, self.post)
+    
+    def __calib_random(self):
+        data = np.random.uniform(low=self.rng[0], high=self.rng[1], size=(self.n, *self.in_shape[1:]))
+        for point in data:
+            point = self.pre(point)
+            yield {self.input_name: point.astype(np.float32)}
+        
 
 
 class CModelLiteRT(CModelUser):
