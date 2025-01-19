@@ -19,6 +19,7 @@ model_arch = Sequential([
         tf.keras.layers.Dense(16, activation='relu'),
         tf.keras.layers.Dense(out_shape, activation='sigmoid')
     ])
+np.random.seed(42)
 
 
 def custom_calib():
@@ -45,7 +46,7 @@ def test_model_tf_convert():
     m.load()
     assert isinstance(m, models.CModelTF)
     for prec in precs:
-        litert_model = m.convert(prec)
+        litert_model = m.convert(prec, seed=42)
         litert_model.load()
         assert isinstance(litert_model, models.CModelLiteRT)
         assert os.path.exists(litert_model.path)
@@ -58,7 +59,7 @@ def test_model_tf_conversion_invalid_prec():
                                     engine='tf')
     m.load()
     with pytest.raises(ValueError) as e:
-        litert_model = m.convert("int32")
+        litert_model = m.convert("int32", seed=42)
 
 
 def test_model_modif_calib():
@@ -66,7 +67,7 @@ def test_model_modif_calib():
                                     engine='tf')
     m.load()
     assert isinstance(m, models.CModelTF)
-    litert_model = m.convert(prec='int8', n=200, rng=[0.3, 0.5])
+    litert_model = m.convert(prec='int8', n=200, rng=[0.3, 0.5], seed=42)
     litert_model.load()
     assert isinstance(litert_model, models.CModelLiteRT)
     assert os.path.exists(litert_model.path)
