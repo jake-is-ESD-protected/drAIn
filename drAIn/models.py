@@ -162,6 +162,16 @@ class CModelTF(CModelUser):
 
         return CModelTrainingResult(hist, train_metrics, val_metrics, test_metrics, zero_return)
     
+    def inference(self, data):
+        if not self.__mtf:
+            raise RuntimeError("No model loaded. Did you call `your_model.load()`?")
+        data = np.asarray(data)
+        if data.shape[1:] != self.in_shape[1:]:
+            raise ValueError(f"Data has shape {data.shape[1:]} while the model input\
+                             is of shape {self.in_shape[1:]}! (ignoring batch size)")
+        self.batch_size = data.shape[0]
+        return self.__mtf.predict(data)
+
     def convert(self, prec, **kwargs):
         converter = self.tf.lite.TFLiteConverter.from_keras_model(self.__mtf)
         converter.optimizations = [self.tf.lite.Optimize.DEFAULT]
@@ -188,6 +198,9 @@ class CModelTF(CModelUser):
             data_shape = np.asarray(datapoint[self.input_name]).shape
             if data_shape != self.in_shape[1:]:
                 raise RuntimeError(f"Data shape {data_shape[1:]} and model input {self.in_shape} do not match!")
+            npseed = kwargs.get('seed', None)
+            if npseed:
+                np.random.seed(npseed)
             converter.representative_dataset = calibration
             converter.target_spec.supported_ops = [self.tf.lite.OpsSet.TFLITE_BUILTINS_INT8]
             converter.inference_input_type = self.tf.int8
@@ -216,6 +229,7 @@ class CModelLiteRT(CModelUser):
         if not self.trained:
             raise FileNotFoundError(f"No LiteRT model found at <{self.path}>.")
         import ai_edge_litert.interpreter as litert # type: ignore
+        self.interpreter = None
         self.litert = litert
         self.delegate = None
     
@@ -233,6 +247,38 @@ class CModelLiteRT(CModelUser):
         if self.prec == np.int8:
             self.in_scale, self.in_zero_point = self.in_info[0]['quantization']
             self.out_scale, self.out_zero_point = self.out_info[0]['quantization']
+        
+    def inference(self, data):
+        if not self.interpreter:
+            raise RuntimeError("No model loaded. Did you call `your_model.load()`?")
+        data = np.asarray(data)
+        if data.shape != self.in_shape:
+            raise ValueError(f"Data has shape {data.shape} while the model input\
+                             is of shape {self.in_shape}!")
+        data = self.__scale_in_prec(data)
+        if self.batch_size == 1 and data.shape[0] != self.batch_size:
+            data = np.expand_dims(data, axis=0) # fixes the 1 batchsize issue
+        self.interpreter.set_tensor(self.in_info[0]['index'], data)
+        self.interpreter.invoke()
+        results = []
+        if len(self.out_info) > 1:
+            for t in self.out_info:
+                results.append(self.interpreter.get_tensor(t['index']))
+        else:
+            results = self.interpreter.get_tensor(self.out_info[0]['index'])
+        return self.__scale_out_prec(np.asarray(results.copy()))
+    
+    def __scale_in_prec(self, data):
+        if self.prec == np.int8:
+            return np.int8(data / self.in_scale + self.in_zero_point)
+        else:
+            return data
+    
+    def __scale_out_prec(self, data):
+        if self.prec == np.int8:
+            return (data.astype(np.float32) - self.out_zero_point) * self.out_scale
+        else:
+            return data
 
 
 class CModelTrainingResult:
