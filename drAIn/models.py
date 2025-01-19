@@ -180,6 +180,11 @@ class CModelTF(CModelUser):
             self.n = kwargs.get('n', 100)
             self.rng = kwargs.get('rng', [0, 1])
             datapoint = next(calibration())
+            if self.input_name not in datapoint.keys():
+                raise ValueError(f"Your calibration function needs to return datapoints with the key\
+                                 {self.input_name}, yours has key {datapoint.keys()}.")
+            if np.asarray(datapoint[self.input_name]).dtype != np.float32:
+                raise ValueError("Your custom calibration does not yield the required **float32** data!")
             data_shape = np.asarray(datapoint[self.input_name]).shape
             if data_shape != self.in_shape[1:]:
                 raise RuntimeError(f"Data shape {data_shape[1:]} and model input {self.in_shape} do not match!")
