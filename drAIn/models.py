@@ -148,7 +148,7 @@ class CModelTF(CModelUser):
                               callbacks=callbacks,
                               batch_size=batch)
         
-        train_metrics = self.__mtf.evaluate([xtrain], ytrain, verbose=0)
+        train_metrics = self.__mtf.evaluate(xtrain, ytrain, verbose=0)
         val_metrics = self.__mtf.evaluate(xval, yval, verbose=0)
         test_metrics = self.__mtf.evaluate(xtest, ytest, verbose=0)
 
