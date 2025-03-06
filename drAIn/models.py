@@ -8,6 +8,24 @@ import inspect
 class CModelGenerator:
     @classmethod
     def make(cls, path: str, engine: str, preproc=None, postproc=None, arch="frompath") -> "CModelBase":
+        """
+        Create a drAIn model from a saved model path or Keras architecture.
+
+        Parameters
+        ----------
+        path : str
+            Path to the model. If the model has yet to be built, the given string will
+            be used as save path for later saving.
+        engine : str
+            String describing the framework or engine. Can be ['tf', 'litert'].
+        preproc : callable
+            Preprocessing function. Can be defined anywhere. Is called in `inference()`.
+        preproc : callable
+            Postprocessing function. Can be defined anywhere. Is called in `inference()`.
+        arch : Sequential
+            Model architecture. If the model is saved, the architecture is determined from the
+            loaded model.
+        """
         if engine not in cls.get_supported_engines():
             raise ValueError(f"Unsupported engine <{engine}>. Use {cls.get_supported_engines()}.")
         for e, c in cls.get_supported_classes().items():
@@ -18,10 +36,16 @@ class CModelGenerator:
     
     @classmethod
     def get_supported_engines(cls) -> list:
+        """
+        Get the supported inference enfines.
+        """
         return ['tf', 'litert']
 
     @classmethod
     def get_supported_classes(cls) -> dict:
+        """
+        Get the supported model classes fitting the inference engines.
+        """
         return dict(zip(cls.get_supported_engines(), [CModelTF, CModelLiteRT]))
         
 
@@ -71,6 +95,27 @@ class CModelUser(CModelBase):
 
 
 class CModelTF(CModelUser):
+    """
+    TensorFlow model abstraction class. Manages loading, training, converting
+    and inference.
+
+    Parameters
+    ----------
+    path : str
+        Path to model. If it exists, the model will be loaded from there.
+        If it does not exist, this path will be used to save it if an
+        architecture is given and the model is trained.
+    preproc : callable
+        See `CModelGenerator.make()`.
+    postproc : callable
+        See `CModelGenerator.make()`.
+    arch : Sequential
+        See `CModelGenerator.make()`.
+    
+    Notes
+    -----
+    Do not instanciate this class directly. Use CModelGenerator.make() instead.
+    """
     def __init__(self, path: str, preproc=None, postproc=None, arch="frompath") -> None:
         super().__init__(path, 'tf', preproc, postproc, arch)
         import tensorflow as tf # type: ignore
@@ -88,6 +133,11 @@ class CModelTF(CModelUser):
         return self.arch
     
     def load(self, **kwargs):
+        """
+        Load the model abstraction. If an architecture was given, the model will be compiled.
+        `**kwargs` are passed to `compile()` of the standard TensorFlow framework. 
+        `verbose` can also be set to `True` to obtain further loading information.
+        """
         verbose = kwargs.pop('verbose', False)
         if self.trained:
             self.__mtf = self.__load_saved()
@@ -101,6 +151,32 @@ class CModelTF(CModelUser):
             printDrAIn(f"This model is trained: {self.trained}")
     
     def train(self, data, valid_split=0.2, test_split=0.05, epochs=100, batch=1, callbacks='default', **kwargs):
+        """
+        Train the model based on the given architecture.
+
+        Parameters
+        ----------
+        data : np.ndarray | list
+            Array of all available data. Is expected to have a top dimension shape of 2, where
+            the first dimension is the input data and the second are the ground truths to the
+            input data.
+        valid_split : float
+            Validation split size factor relative to entire data set.
+        test_split : float
+            Test split size factor relative to entire data set.
+        epochs : int
+            Number of training epochs as understood by TensorFlow.
+        batch : int
+            Data batch size (number of parallel data point inputs)
+        callbacks : list[tf.keras.callbacks]
+            List of TensorFlow callbacks such as TensorBoard or EarlyStopping.
+        
+        Returns
+        
+        Notes
+        -----
+        `verbose` can also be set to `True` to obtain further training information.
+        """
         if not self.__mtf:
             raise RuntimeError("No model loaded. Did you call `your_model.load()`?")
         if valid_split + test_split > 1.0:
@@ -163,14 +239,28 @@ class CModelTF(CModelUser):
         return CModelTrainingResult(hist, train_metrics, val_metrics, test_metrics, zero_return)
     
     def inference(self, data):
+        """
+        Infer a data point. Calls the given preprocessing and postprocessing function 
+        from the inside.
+
+        Parameters
+        ----------
+        data : np.ndarray
+            Data as expected by the preprocessing function.
+        
+        Returns
+        -------
+        Neural network output AFTER postprocessing.
+        """
         if not self.__mtf:
             raise RuntimeError("No model loaded. Did you call `your_model.load()`?")
-        data = np.asarray(data)
+        data = self.pre(np.asarray(data))
         if data.shape[1:] != self.in_shape[1:]:
             raise ValueError(f"Data has shape {data.shape[1:]} while the model input\
                              is of shape {self.in_shape[1:]}! (ignoring batch size)")
         self.batch_size = data.shape[0]
-        return self.__mtf.predict(data)
+        pred = self.__mtf.predict(data)
+        return self.post(pred)
 
     def convert(self, prec, **kwargs):
         converter = self.tf.lite.TFLiteConverter.from_keras_model(self.__mtf)
@@ -222,6 +312,26 @@ class CModelTF(CModelUser):
 
 
 class CModelLiteRT(CModelUser):
+    """
+    LiteRT model abstraction class. Manages loading and inference.
+
+    Parameters
+    ----------
+    path : str
+        Path to model. If it exists, the model will be loaded from there.
+        If it does not exist, this path will be used to save it if an
+        architecture is given and the model is trained.
+    preproc : callable
+        See `CModelGenerator.make()`.
+    postproc : callable
+        See `CModelGenerator.make()`.
+    arch : Sequential
+        See `CModelGenerator.make()`.
+    
+    Notes
+    -----
+    Do not instanciate this class directly. Use CModelGenerator.make() instead.
+    """
     def __init__(self, path: str, preproc=None, postproc=None, arch="frompath") -> None:
         if not isinstance(arch, str):
             raise ValueError("LiteRT model has a fixed architecture. Consider loading a TF model instead.")
@@ -251,7 +361,7 @@ class CModelLiteRT(CModelUser):
     def inference(self, data):
         if not self.interpreter:
             raise RuntimeError("No model loaded. Did you call `your_model.load()`?")
-        data = np.asarray(data)
+        data = self.pre(np.asarray(data))
         if data.shape != self.in_shape:
             raise ValueError(f"Data has shape {data.shape} while the model input\
                              is of shape {self.in_shape}!")
@@ -266,7 +376,7 @@ class CModelLiteRT(CModelUser):
                 results.append(self.interpreter.get_tensor(t['index']))
         else:
             results = self.interpreter.get_tensor(self.out_info[0]['index'])
-        return self.__scale_out_prec(np.asarray(results.copy()))
+        return self.post(self.__scale_out_prec(np.asarray(results.copy())))
     
     def __scale_in_prec(self, data):
         if self.prec == np.int8:
