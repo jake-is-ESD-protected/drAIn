@@ -170,6 +170,7 @@ class CModelTF(CModelUser):
             Data batch size (number of parallel data point inputs)
         callbacks : list[tf.keras.callbacks]
             List of TensorFlow callbacks such as TensorBoard or EarlyStopping.
+            Use `'default'` for `TensorBoard` and `EarlyStopping`.
         
         Returns
         
@@ -191,7 +192,6 @@ class CModelTF(CModelUser):
         if callbacks == 'default':
             now = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
             log_dir = "logs/" + os.path.basename(self.path) + '_' + now
-
             tensorboard_callback = self.tf.keras.callbacks.TensorBoard(log_dir=log_dir, 
                                                                        histogram_freq=1)
             early_stopping_callback = self.tf.keras.callbacks.EarlyStopping(monitor='val_loss', 
@@ -202,9 +202,11 @@ class CModelTF(CModelUser):
                 printDrAIn(f"Using default callbacks {callbacks}")
                 printDrAIn(f"Storing logs to {log_dir}")
         
-        if callbacks == None:
+        elif callbacks == None:
             if verbose:
                 printDrAIn(f"No callbacks registered.")
+        else:
+            printDrAIn(f"Using callbacks {callbacks}")
 
         from sklearn.model_selection import train_test_split # type: ignore
         xtrain, xval, ytrain, yval = train_test_split(data[0],
